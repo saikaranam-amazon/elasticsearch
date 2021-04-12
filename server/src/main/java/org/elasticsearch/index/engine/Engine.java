@@ -1654,7 +1654,7 @@ public abstract class Engine implements Closeable {
             this.ifPrimaryTerm = primaryTerm;
             return this;
         }
-        
+
         public long getIfPrimaryTerm() {
             return ifPrimaryTerm;
         }
@@ -1836,6 +1836,11 @@ public abstract class Engine implements Closeable {
     }
 
     public void onSettingsChanged(TimeValue translogRetentionAge, ByteSizeValue translogRetentionSize, long softDeletesRetentionOps) {
+
+    }
+
+    public void onSettingsChanged(TimeValue translogRetentionAge,
+                                  ByteSizeValue translogRetentionSize, long softDeletesRetentionOps, boolean translogPruningByRetentionLease) {
 
     }
 

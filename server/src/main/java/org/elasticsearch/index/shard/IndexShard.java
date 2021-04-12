@@ -1949,7 +1949,8 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             engineOrNull.onSettingsChanged(
                 disableTranslogRetention ? TimeValue.MINUS_ONE : indexSettings.getTranslogRetentionAge(),
                 disableTranslogRetention ? new ByteSizeValue(-1) : indexSettings.getTranslogRetentionSize(),
-                indexSettings.getSoftDeleteRetentionOperations()
+                indexSettings.getSoftDeleteRetentionOperations(),
+                indexSettings.shouldPruneTranslogByRetentionLease()
             );
         }
     }
@@ -1994,6 +1995,14 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
      */
     public Translog.Snapshot getHistoryOperations(String reason, Engine.HistorySource source, long startingSeqNo) throws IOException {
         return getEngine().readHistoryOperations(reason, source, mapperService, startingSeqNo);
+    }
+
+    /**
+     * Creates a new history snapshot for reading operations since the provided starting seqno (inclusive).
+     * The returned snapshot can be retrieved from either Lucene index or translog files.
+     */
+    public Translog.Snapshot getHistoryOperations(String reason, Engine.HistorySource source, long startingSeqNo, long endSeqNo) throws IOException {
+        return getEngine().newChangesSnapshot(source.name(), mapperService, startingSeqNo, endSeqNo, true);
     }
 
     /**
@@ -2135,14 +2144,6 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         this.globalCheckpointListeners.add(waitingForGlobalCheckpoint, listener, timeout);
     }
 
-    private void ensureSoftDeletesEnabled(String feature) {
-        if (indexSettings.isSoftDeleteEnabled() == false) {
-            String message = feature + " requires soft deletes but " + indexSettings.getIndex() + " does not have soft deletes enabled";
-            assert false : message;
-            throw new IllegalStateException(message);
-        }
-    }
-
     /**
      * Get all retention leases tracked on this shard.
      *
@@ -2189,7 +2190,6 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         Objects.requireNonNull(listener);
         assert assertPrimaryMode();
         verifyNotClosed();
-        ensureSoftDeletesEnabled("retention leases");
         try (Closeable ignore = acquireHistoryRetentionLock(Engine.HistorySource.INDEX)) {
             final long actualRetainingSequenceNumber =
                 retainingSequenceNumber == RETAIN_ALL ? getMinRetainedSeqNo() : retainingSequenceNumber;
@@ -2211,7 +2211,6 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
     public RetentionLease renewRetentionLease(final String id, final long retainingSequenceNumber, final String source) {
         assert assertPrimaryMode();
         verifyNotClosed();
-        ensureSoftDeletesEnabled("retention leases");
         try (Closeable ignore = acquireHistoryRetentionLock(Engine.HistorySource.INDEX)) {
             final long actualRetainingSequenceNumber =
                     retainingSequenceNumber == RETAIN_ALL ? getMinRetainedSeqNo() : retainingSequenceNumber;
@@ -2231,7 +2230,6 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         Objects.requireNonNull(listener);
         assert assertPrimaryMode();
         verifyNotClosed();
-        ensureSoftDeletesEnabled("retention leases");
         replicationTracker.removeRetentionLease(id, listener);
     }
 
